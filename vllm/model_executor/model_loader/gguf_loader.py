@@ -195,6 +195,20 @@ class GGUFModelLoader(BaseModelLoader):
                     )
                 )
 
+        if model_type == "qwen3_5_moe":
+            model_type = "qwen35moe"
+            gguf_to_hf_name_map["v.post_ln.weight"] = "model.visual.merger.norm.weight"
+            gguf_to_hf_name_map["v.post_ln.bias"] = "model.visual.merger.norm.bias"
+            gguf_to_hf_name_map["mm.0.weight"] = "model.visual.merger.linear_fc1.weight"
+            gguf_to_hf_name_map["mm.0.bias"] = "model.visual.merger.linear_fc1.bias"
+            gguf_to_hf_name_map["mm.2.weight"] = "model.visual.merger.linear_fc2.weight"
+            gguf_to_hf_name_map["mm.2.bias"] = "model.visual.merger.linear_fc2.bias"
+
+            for idx in range(config.text_config.num_hidden_layers):
+                gguf_to_hf_name_map[f"blk.{idx}.ssm_dt.bias"] = (
+                    f"model.language_model.layers.{idx}.linear_attn.dt_bias"
+                )
+
         arch = None
         for key, value in gguf.MODEL_ARCH_NAMES.items():
             if value == model_type:
@@ -205,7 +219,11 @@ class GGUFModelLoader(BaseModelLoader):
         text_num_layers = text_config.num_hidden_layers
         text_name_map = gguf.get_tensor_name_map(arch, text_num_layers)
 
-        if is_multimodal:
+        if model_type in ("qwen35moe",):
+            mm_proj_arch = gguf.MODEL_ARCH.MMPROJ
+            vision_num_layers = config.vision_config.depth
+            vision_name_map = gguf.get_tensor_name_map(mm_proj_arch, vision_num_layers)
+        elif is_multimodal:
             mm_proj_arch = gguf.MODEL_ARCH.MMPROJ
             vision_num_layers = config.vision_config.num_hidden_layers
             vision_name_map = gguf.get_tensor_name_map(mm_proj_arch, vision_num_layers)
@@ -307,6 +325,7 @@ class GGUFModelLoader(BaseModelLoader):
             if gguf_name is None:
                 return None
 
+            print(f"Mapping HF name '{hf_name}' to GGUF name '{gguf_name}'")
             return gguf_name + "." + suffix
 
         # Build mapping and track unmapped parameters
